@@ -1,1 +1,73 @@
+name: Unpack A5 CCTV Project
 
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Unpack project ZIP
+        run: |
+          set -e
+
+          ZIP="A5CCTV_GitHub_Ready.zip"
+          TEMP_DIR="_unpack_temp"
+
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR: $ZIP not found"
+            exit 1
+          fi
+
+          rm -rf "$TEMP_DIR"
+          mkdir "$TEMP_DIR"
+
+          unzip -q "$ZIP" -d "$TEMP_DIR"
+
+          echo "ZIP contents:"
+          find "$TEMP_DIR" -maxdepth 3 -type f | sort
+
+          rm -rf project
+
+          if [ -d "$TEMP_DIR/project" ]; then
+            mv "$TEMP_DIR/project" project
+
+          elif [ -f "$TEMP_DIR/settings.gradle.kts" ]; then
+            mkdir -p project
+            cp -R "$TEMP_DIR"/. project/
+
+          elif [ -f "$TEMP_DIR/A5CCTV/settings.gradle.kts" ]; then
+            mv "$TEMP_DIR/A5CCTV" project
+
+          else
+            echo "ERROR: Android project structure was not found in ZIP"
+            exit 1
+          fi
+
+          rm -rf "$TEMP_DIR"
+          rm -f "$ZIP"
+
+          echo "Final project structure:"
+          find project -maxdepth 4 -type f | sort
+
+      - name: Commit extracted project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Unpack A5 CCTV Android project"
+          git push
