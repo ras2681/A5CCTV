@@ -47,6 +47,38 @@ jobs:
             fi
           fi
 
+      - name: Fix JVM target compatibility
+        shell: bash
+        working-directory: project
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/build.gradle.kts")
+          text = path.read_text()
+
+          if "sourceCompatibility = JavaVersion.VERSION_17" not in text:
+              text = text.replace(
+                  "android {\n",
+                  """android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+
+          """,
+                  1
+              )
+
+          path.write_text(text)
+          print("JVM target fixed to Java 17")
+          print(path.read_text())
+          PY
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
