@@ -1,13 +1,17 @@
 package com.a5cctv.universal
+
 import android.app.*
 import android.content.Context
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.*
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import org.json.JSONArray
@@ -17,15 +21,22 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.ArrayList
 import java.util.concurrent.Executors
+
 class MainActivity : Activity() {
+
     private val io = Executors.newSingleThreadExecutor()
+
     private val prefs by lazy {
         getSharedPreferences("a5cctv", Context.MODE_PRIVATE)
     }
+
     private val devices = mutableListOf<Device>()
     private val groups = mutableListOf<String>()
     private val players = mutableListOf<ExoPlayer>()
+
     private var gridSize = 4
+    private var isPlayerScreen = false
+
     data class Device(
         var id: String,
         var name: String,
@@ -37,26 +48,34 @@ class MainActivity : Activity() {
         var protocol: String = "ONVIF",
         var rtsp: String = ""
     )
+
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         load()
         home()
     }
+
     private fun load() {
         groups.clear()
         devices.clear()
+
         val ga = JSONArray(
             prefs.getString("groups", "[\"Без группы\"]")
         )
+
         for (i in 0 until ga.length()) {
             groups += ga.optString(i)
         }
+
         if (groups.isEmpty()) {
             groups += "Без группы"
         }
+
         val da = JSONArray(prefs.getString("devices", "[]"))
+
         for (i in 0 until da.length()) {
             val o = da.getJSONObject(i)
+
             devices += Device(
                 o.optString("id"),
                 o.optString("name"),
@@ -70,10 +89,13 @@ class MainActivity : Activity() {
             )
         }
     }
+
     private fun save() {
         val ga = JSONArray()
         groups.distinct().forEach { ga.put(it) }
+
         val da = JSONArray()
+
         devices.forEach { d ->
             da.put(JSONObject().apply {
                 put("id", d.id)
@@ -87,11 +109,13 @@ class MainActivity : Activity() {
                 put("rtsp", d.rtsp)
             })
         }
+
         prefs.edit()
             .putString("groups", ga.toString())
             .putString("devices", da.toString())
             .apply()
     }
+
     private fun tv(s: String, n: Float = 18f): TextView {
         return TextView(this).apply {
             text = s
@@ -100,13 +124,44 @@ class MainActivity : Activity() {
             setPadding(20, 14, 20, 14)
         }
     }
+
     private fun btn(s: String, on: () -> Unit): Button {
         return Button(this).apply {
             text = s
             minHeight = 56
+            isFocusable = true
+            isFocusableInTouchMode = true
+
+            setOnFocusChangeListener { view, focused ->
+                view.scaleX = if (focused) 1.04f else 1.0f
+                view.scaleY = if (focused) 1.04f else 1.0f
+
+                view.background = GradientDrawable().apply {
+                    cornerRadius = 8f
+
+                    setColor(
+                        if (focused) {
+                            Color.rgb(42, 74, 102)
+                        } else {
+                            Color.rgb(40, 42, 46)
+                        }
+                    )
+
+                    setStroke(
+                        if (focused) 4 else 1,
+                        if (focused) {
+                            Color.WHITE
+                        } else {
+                            Color.rgb(100, 105, 110)
+                        }
+                    )
+                }
+            }
+
             setOnClickListener { on() }
         }
     }
+
     private fun root(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -114,71 +169,91 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(11, 13, 16))
         }
     }
+
     private fun home() {
+        isPlayerScreen = false
         stopPlayers()
+
         val r = root()
+
         r.addView(tv("A5 CCTV", 30f))
+
         r.addView(
             tv("Универсальный видеоклиент • ONVIF + RTSP", 18f)
         )
+
         r.addView(
             btn("📁 Группы (${groups.size})") {
                 groupsDialog()
             }
         )
+
         r.addView(
             btn("📹 Устройства (${devices.size})") {
                 devicesDialog()
             }
         )
+
         r.addView(
             btn("▦ Просмотр камер") {
                 gridDialog()
             }
         )
+
         r.addView(
             btn("🔎 Найти ONVIF-устройства") {
                 discoverDialog()
             }
         )
+
         r.addView(
             btn("＋ Добавить устройство") {
                 deviceEditor(null)
             }
         )
+
         r.addView(
             btn("▶ Открыть RTSP вручную") {
                 rtspDialog()
             }
         )
+
         setContentView(r)
+
         r.post {
             val views = ArrayList<View>()
+
             r.findViewsWithText(
                 views,
                 "📁 Группы (${groups.size})",
                 View.FIND_VIEWS_WITH_TEXT
             )
+
             views.firstOrNull()?.requestFocus()
         }
     }
+
     private fun groupsDialog() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
+
         groups.forEach { g ->
             val row = LinearLayout(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
             }
+
             row.addView(
                 tv("$g  •  ${devices.count { it.group == g }}", 18f),
                 LinearLayout.LayoutParams(0, 65, 1f)
             )
+
             row.addView(
                 btn("✎") {
                     renameGroup(g)
                 }
             )
+
             row.addView(
                 btn("×") {
                     if (groups.size > 1) {
@@ -186,14 +261,17 @@ class MainActivity : Activity() {
                             .forEach {
                                 it.group = "Без группы"
                             }
+
                         groups.remove(g)
                         save()
                         groupsDialog()
                     }
                 }
             )
+
             box.addView(row)
         }
+
         AlertDialog.Builder(this)
             .setTitle("Группы")
             .setView(box)
@@ -201,17 +279,20 @@ class MainActivity : Activity() {
                 newGroup()
             }
             .setNegativeButton("Закрыть", null)
-            .show()
+            .showFocused(AlertDialog.BUTTON_NEGATIVE)
     }
+
     private fun newGroup() {
         val e = EditText(this).apply {
             hint = "Название группы"
         }
+
         AlertDialog.Builder(this)
             .setTitle("Новая группа")
             .setView(e)
             .setPositiveButton("Создать") { _, _ ->
                 val name = e.text.toString().trim()
+
                 if (name.isNotBlank()) {
                     groups.add(name)
                     save()
@@ -219,54 +300,66 @@ class MainActivity : Activity() {
                 }
             }
             .setNegativeButton("Отмена", null)
-            .show()
+            .showFocused(AlertDialog.BUTTON_NEGATIVE)
     }
+
     private fun renameGroup(old: String) {
         val e = EditText(this).apply {
             setText(old)
         }
+
         AlertDialog.Builder(this)
             .setTitle("Переименовать группу")
             .setView(e)
             .setPositiveButton("Сохранить") { _, _ ->
                 val name = e.text.toString().trim()
                 val index = groups.indexOf(old)
+
                 if (name.isNotBlank() && index >= 0) {
                     groups[index] = name
+
                     devices.filter { it.group == old }
                         .forEach {
                             it.group = name
                         }
+
                     save()
                     groupsDialog()
                 }
             }
             .setNegativeButton("Отмена", null)
-            .show()
+            .showFocused()
     }
+
     private fun devicesDialog() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
+
         if (devices.isEmpty()) {
             box.addView(
                 tv("Устройств пока нет. Добавь камеру или NVR.")
             )
         }
+
         devices.forEach { d ->
             val b = Button(this).apply {
                 text = "${d.name}\n${d.host}:${d.port} • ${d.protocol} • ${d.group}"
                 isAllCaps = false
                 gravity = Gravity.START
                 minHeight = 76
+
                 setOnClickListener {
                     deviceActions(d)
                 }
             }
+
             box.addView(b)
         }
+
         val scroll = ScrollView(this)
         scroll.addView(box)
+
         AlertDialog.Builder(this)
             .setTitle("Устройства")
             .setView(scroll)
@@ -274,8 +367,9 @@ class MainActivity : Activity() {
                 deviceEditor(null)
             }
             .setNegativeButton("Закрыть", null)
-            .show()
+            .showFocused()
     }
+
     private fun deviceActions(d: Device) {
         AlertDialog.Builder(this)
             .setTitle(d.name)
@@ -288,7 +382,9 @@ class MainActivity : Activity() {
             ) { _, which ->
                 when (which) {
                     0 -> connectDevice(d)
+
                     1 -> deviceEditor(d)
+
                     2 -> {
                         devices.remove(d)
                         save()
@@ -296,57 +392,69 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            .show()
+            .showFocused()
     }
+
     private fun deviceEditor(existing: Device?) {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(25, 5, 25, 5)
         }
+
         val name = EditText(this).apply {
             hint = "Название устройства"
             setText(existing?.name ?: "Камера")
         }
+
         val host = EditText(this).apply {
             hint = "IP или hostname"
             setText(existing?.host ?: "")
             setSingleLine()
         }
+
         val port = EditText(this).apply {
             hint = "Порт ONVIF"
             setText((existing?.port ?: 80).toString())
             inputType = 2
         }
+
         val user = EditText(this).apply {
             hint = "Логин"
             setText(existing?.user ?: "")
             setSingleLine()
         }
+
         val pass = EditText(this).apply {
             hint = "Пароль"
             setText(existing?.pass ?: "")
             inputType = 0x81
         }
+
         val rtsp = EditText(this).apply {
             hint = "RTSP URL (необязательно)"
             setText(existing?.rtsp ?: "")
             setSingleLine()
         }
+
         val group = Spinner(this).apply {
             adapter = ArrayAdapter(
                 this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item,
                 groups
             )
+
             setSelection(
                 groups.indexOf(existing?.group).coerceAtLeast(0)
             )
         }
+
         listOf(name, host, port, user, pass, rtsp).forEach {
             box.addView(it)
         }
+
         box.addView(tv("Группа", 14f))
         box.addView(group)
+
         AlertDialog.Builder(this)
             .setTitle(
                 if (existing == null) {
@@ -366,24 +474,29 @@ class MainActivity : Activity() {
                     "",
                     "Без группы"
                 )
+
                 d.name = name.text.toString()
                     .trim()
                     .ifBlank { "Камера" }
+
                 d.host = host.text.toString().trim()
                 d.port = port.text.toString().toIntOrNull() ?: 80
                 d.user = user.text.toString()
                 d.pass = pass.text.toString()
                 d.rtsp = rtsp.text.toString().trim()
                 d.group = group.selectedItem?.toString() ?: "Без группы"
+
                 if (existing == null) {
                     devices.add(d)
                 }
+
                 save()
                 devicesDialog()
             }
             .setNegativeButton("Отмена", null)
-            .show()
+            .showFocused()
     }
+
     private fun connectDevice(d: Device) {
         if (d.rtsp.isNotBlank()) {
             playSingle(
@@ -392,6 +505,7 @@ class MainActivity : Activity() {
             )
             return
         }
+
         if (d.host.isBlank()) {
             showError(
                 "Нет адреса устройства",
@@ -401,11 +515,13 @@ class MainActivity : Activity() {
             )
             return
         }
+
         Toast.makeText(
             this,
             "ONVIF: подключение…",
             Toast.LENGTH_SHORT
         ).show()
+
         io.execute {
             val result = runCatching {
                 OnvifClient(
@@ -415,10 +531,12 @@ class MainActivity : Activity() {
                     d.pass
                 ).connect()
             }
+
             runOnUiThread {
                 result.onSuccess { res ->
                     d.rtsp = res.streamUri
                     save()
+
                     playSingle(
                         addCredentials(res.streamUri, d.user, d.pass),
                         d.name
@@ -429,6 +547,7 @@ class MainActivity : Activity() {
             }
         }
     }
+
     private fun gridDialog() {
         if (devices.isEmpty()) {
             Toast.makeText(
@@ -438,12 +557,14 @@ class MainActivity : Activity() {
             ).show()
             return
         }
+
         val items = arrayOf(
             "1 камера",
             "4 камеры",
             "9 камер",
             "16 камер"
         )
+
         AlertDialog.Builder(this)
             .setTitle("Сетка просмотра")
             .setItems(items) { _, which ->
@@ -451,11 +572,14 @@ class MainActivity : Activity() {
                 showGrid()
             }
             .setNegativeButton("Отмена", null)
-            .show()
+            .showFocused()
     }
+
     private fun showGrid() {
         stopPlayers()
+
         val scroll = ScrollView(this)
+
         val grid = GridLayout(this).apply {
             columnCount = when (gridSize) {
                 1 -> 1
@@ -463,9 +587,11 @@ class MainActivity : Activity() {
                 9 -> 3
                 else -> 4
             }
+
             rowCount = (gridSize + columnCount - 1) / columnCount
             setBackgroundColor(Color.BLACK)
         }
+
         devices.take(gridSize).forEachIndexed { index, d ->
             val frame = FrameLayout(this).apply {
                 setBackgroundColor(Color.BLACK)
@@ -473,50 +599,63 @@ class MainActivity : Activity() {
                 isFocusable = true
                 isClickable = true
             }
+
             val playerView = PlayerView(this).apply {
                 useController = true
                 setBackgroundColor(Color.BLACK)
             }
+
             frame.addView(
                 playerView,
                 FrameLayout.LayoutParams(-1, -1)
             )
+
             val label = TextView(this).apply {
                 text = d.name
                 setTextColor(Color.WHITE)
                 setBackgroundColor(0x99000000.toInt())
                 setPadding(10, 5, 10, 5)
             }
+
             frame.addView(
                 label,
                 FrameLayout.LayoutParams(-2, -2).apply {
                     gravity = Gravity.TOP or Gravity.START
                 }
             )
+
             val lp = GridLayout.LayoutParams().apply {
                 width = 0
                 height = 0
+
                 columnSpec = GridLayout.spec(
                     index % grid.columnCount,
                     1f
                 )
+
                 rowSpec = GridLayout.spec(
                     index / grid.columnCount,
                     1f
                 )
+
                 setMargins(2, 2, 2, 2)
             }
+
             grid.addView(frame, lp)
+
             frame.setOnClickListener {
                 playSingle(resolveRtsp(d), d.name)
             }
+
             if (d.rtsp.isNotBlank()) {
                 startPlayer(resolveRtsp(d), playerView)
             }
         }
+
         scroll.addView(grid)
         setContentView(scroll)
     }
+
     private fun resolveRtsp(d: Device): String {
         return if (d.rtsp.isNotBlank()) {
             addCredentials(d.rtsp, d.user, d.pass)
@@ -524,6 +663,7 @@ class MainActivity : Activity() {
             ""
         }
     }
+
     private fun playSingle(
         raw: String,
         name: String = "Камера"
@@ -536,62 +676,141 @@ class MainActivity : Activity() {
             ).show()
             return
         }
+
         stopPlayers()
-        val playerView = PlayerView(this)
-        setContentView(playerView)
-        startPlayer(raw, playerView)
-        playerView.contentDescription = name
-        playerView.setOnClickListener {
-            stopPlayers()
+        isPlayerScreen = true
+
+        val screen = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            isFocusableInTouchMode = true
+        }
+
+        val playerView = PlayerView(this).apply {
+            useController = true
+            setBackgroundColor(Color.BLACK)
+        }
+
+        screen.addView(
+            playerView,
+            FrameLayout.LayoutParams(-1, -1)
+        )
+
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(8, 4, 8, 4)
+            setBackgroundColor(0xCC0B0D10.toInt())
+        }
+
+        val backButton = btn("‹ НАЗАД") {
             home()
         }
+
+        topBar.addView(backButton)
+
+        topBar.addView(
+            tv(name, 16f),
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
+
+        screen.addView(
+            topBar,
+            FrameLayout.LayoutParams(
+                -1,
+                -2,
+                Gravity.TOP
+            )
+        )
+
+        setContentView(screen)
+
+        startPlayer(raw, playerView)
+
+        playerView.contentDescription = name
+        backButton.requestFocus()
     }
+
     private fun startPlayer(
         raw: String,
         playerView: PlayerView
     ) {
         val player = ExoPlayer.Builder(this).build()
+
         players.add(player)
         playerView.player = player
+
+        player.addListener(object : Player.Listener {
+
+            override fun onPlayerError(error: PlaybackException) {
+                runOnUiThread {
+                    if (!isFinishing && isPlayerScreen) {
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Не удалось открыть видеопоток")
+                            .setMessage(
+                                "Поток не воспроизводится. Проверь RTSP-адрес, " +
+                                    "логин/пароль и настройки кодека камеры. " +
+                                    "Если включён H.265, попробуй H.264 или субпоток.\n\n" +
+                                    (error.message ?: error.errorCodeName)
+                            )
+                            .setPositiveButton("К СПИСКУ КАМЕР") { _, _ ->
+                                home()
+                            }
+                            .setNegativeButton("ОСТАТЬСЯ", null)
+                            .showFocused(AlertDialog.BUTTON_POSITIVE)
+                    }
+                }
+            }
+        })
+
         player.setMediaItem(
             MediaItem.fromUri(Uri.parse(raw))
         )
+
         player.prepare()
         player.playWhenReady = true
     }
+
     private fun stopPlayers() {
         players.forEach {
             runCatching {
                 it.release()
             }
         }
+
         players.clear()
     }
+
     private fun discoverDialog() {
         val status = tv("Поиск ONVIF в локальной сети…")
+
         AlertDialog.Builder(this)
             .setTitle("Поиск ONVIF")
             .setView(status)
             .setNegativeButton("Закрыть", null)
-            .show()
+            .showFocused(AlertDialog.BUTTON_NEGATIVE)
+
         io.execute {
             val found = runCatching {
                 OnvifDiscovery.discover()
             }.getOrElse {
                 emptyList()
             }
+
             runOnUiThread {
                 status.text = if (found.isEmpty()) {
                     "Ничего не найдено. Можно добавить устройство вручную."
                 } else {
                     found.joinToString("\n\n")
                 }
+
                 status.setOnClickListener {
                     if (found.isNotEmpty()) {
                         val first = found.first()
+
                         val host = runCatching {
                             URI(first).host ?: first
                         }.getOrDefault(first)
+
                         deviceEditor(
                             Device(
                                 System.currentTimeMillis().toString(),
@@ -608,10 +827,12 @@ class MainActivity : Activity() {
             }
         }
     }
+
     private fun rtspDialog() {
         val e = EditText(this).apply {
             hint = "rtsp://user:password@host/..."
         }
+
         AlertDialog.Builder(this)
             .setTitle("RTSP URL")
             .setView(e)
@@ -619,8 +840,9 @@ class MainActivity : Activity() {
                 playSingle(e.text.toString())
             }
             .setNegativeButton("Отмена", null)
-            .show()
+            .showFocused()
     }
+
     private fun addCredentials(
         raw: String,
         user: String,
@@ -629,32 +851,85 @@ class MainActivity : Activity() {
         if (raw.isBlank() || user.isBlank()) {
             return raw
         }
+
         return try {
             val uri = URI(raw)
+
             if (uri.userInfo != null) {
                 return raw
             }
+
             val host = uri.host ?: return raw
             val port = if (uri.port > 0) ":${uri.port}" else ""
             val path = uri.rawPath ?: ""
+
             val query = if (!uri.rawQuery.isNullOrBlank()) {
                 "?${uri.rawQuery}"
             } else {
                 ""
             }
+
             val encodedUser = URLEncoder.encode(
                 user,
                 StandardCharsets.UTF_8.name()
             )
+
             val encodedPass = URLEncoder.encode(
                 pass,
                 StandardCharsets.UTF_8.name()
             )
+
             "rtsp://$encodedUser:$encodedPass@$host$port$path$query"
         } catch (_: Exception) {
             raw
         }
     }
+
+    private fun AlertDialog.Builder.showFocused(
+        preferredButton: Int = AlertDialog.BUTTON_POSITIVE
+    ): AlertDialog {
+        val dialog = create()
+
+        dialog.setOnShowListener {
+            val button = dialog.getButton(preferredButton)
+                ?: dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                ?: dialog.getButton(AlertDialog.BUTTON_NEGATIVE)
+                ?: dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+
+            button?.apply {
+                isFocusable = true
+                isFocusableInTouchMode = true
+
+                setOnFocusChangeListener { view, focused ->
+                    view.scaleX = if (focused) 1.08f else 1.0f
+                    view.scaleY = if (focused) 1.08f else 1.0f
+
+                    view.background = GradientDrawable().apply {
+                        cornerRadius = 8f
+
+                        setColor(
+                            if (focused) {
+                                Color.rgb(35, 83, 120)
+                            } else {
+                                Color.rgb(55, 58, 62)
+                            }
+                        )
+
+                        setStroke(
+                            if (focused) 4 else 1,
+                            if (focused) Color.WHITE else Color.LTGRAY
+                        )
+                    }
+                }
+
+                requestFocus()
+            }
+        }
+
+        dialog.show()
+        return dialog
+    }
+
     private fun showError(
         title: String,
         e: Throwable
@@ -663,8 +938,18 @@ class MainActivity : Activity() {
             .setTitle(title)
             .setMessage(e.message ?: "Неизвестная ошибка")
             .setPositiveButton("OK", null)
-            .show()
+            .showFocused(AlertDialog.BUTTON_POSITIVE)
     }
+
+    @Deprecated("Deprecated in Android API; retained for Android TV remote Back compatibility")
+    override fun onBackPressed() {
+        if (isPlayerScreen) {
+            home()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     override fun onDestroy() {
         stopPlayers()
         io.shutdownNow()
