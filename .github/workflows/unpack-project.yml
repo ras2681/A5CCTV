@@ -1,1 +1,101 @@
+name: Unpack A5 CCTV project
 
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Check ZIP archive
+        shell: bash
+        run: |
+          set -e
+
+          if [ ! -f A5CCTV_GitHub_Ready.zip ]; then
+            echo "ERROR: ZIP archive not found in repository root."
+            exit 1
+          fi
+
+          echo "ZIP archive found."
+
+      - name: Extract Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p /tmp/a5cctv-extract
+
+          unzip -q A5CCTV_GitHub_Ready.zip \
+            -d /tmp/a5cctv-extract
+
+          PROJECT_DIR=""
+
+          if [ -f /tmp/a5cctv-extract/settings.gradle.kts ] || \
+             [ -f /tmp/a5cctv-extract/settings.gradle ]; then
+            PROJECT_DIR="/tmp/a5cctv-extract"
+          else
+            while IFS= read -r file; do
+              candidate="$(dirname "$file")"
+
+              if [ -f "$candidate/settings.gradle.kts" ] || \
+                 [ -f "$candidate/settings.gradle" ]; then
+                PROJECT_DIR="$candidate"
+                break
+              fi
+            done < <(
+              find /tmp/a5cctv-extract -type f \
+                \( -name settings.gradle.kts \
+                -o -name settings.gradle \)
+            )
+          fi
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Gradle project not found in ZIP."
+            find /tmp/a5cctv-extract -maxdepth 4 -type f
+            exit 1
+          fi
+
+          echo "Project found: $PROJECT_DIR"
+
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='A5CCTV_GitHub_Ready.zip' \
+            "$PROJECT_DIR"/ "$GITHUB_WORKSPACE"/
+
+          if [ ! -d app ]; then
+            echo "ERROR: app directory not found after extraction."
+            exit 1
+          fi
+
+          echo "Android project extracted successfully."
+
+      - name: Save extracted project to repository
+        shell: bash
+        run: |
+          set -e
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No changes to save."
+            exit 0
+          fi
+
+          git commit -m "Extract A5 CCTV Android project"
+
+          git push origin HEAD:main
