@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+/build/
+*/build/
+
+# Android Studio
+.idea/
+*.iml
+.externalNativeBuild/
+.cxx/
+
+# Local configuration
+local.properties
+
+# Generated APKs/AABs
+*.apk
+*.aab
+
+# OS
+.DS_Store
+Thumbs.db
