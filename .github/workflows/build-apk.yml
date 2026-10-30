@@ -1,74 +1,55 @@
 name: Build A5 CCTV APK
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+workflow_dispatch:
+push:
+branches:
+- main
+
+permissions:
+contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+build:
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - name: Fix JVM target compatibility
-        shell: bash
-        working-directory: project
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("app/build.gradle.kts")
-          text = path.read_text()
-
-          if "sourceCompatibility = JavaVersion.VERSION_17" not in text:
-              text = text.replace(
-                  "android {\n",
-                  """android {
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-
-              kotlinOptions {
-                  jvmTarget = "17"
-              }
-
-          """,
-                  1
-              )
-
-          path.write_text(text)
-          print("JVM target fixed to Java 17")
-          print(path.read_text())
-          PY
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Build APK
-        working-directory: project
-        run: gradle assembleDebug --no-daemon
-
-      - name: Find APK
-        shell: bash
-        run: |
-          echo "APK files:"
-          find project -type f -name "*.apk" -print
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: A5CCTV-debug-apk
-          path: project/**/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
+  - name: Set up Java
+    uses: actions/setup-java@v4
+    with:
+      distribution: temurin
+      java-version: '17'
+  - name: Check Android project
+    shell: bash
+    run: |
+      set -e
+      if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+        echo "ERROR: Android project not found in repository root."
+        echo "Run the Unpack A5 CCTV project workflow first."
+        exit 1
+      fi
+      if [ ! -f "app/build.gradle.kts" ] && [ ! -f "app/build.gradle" ]; then
+        echo "ERROR: app module not found."
+        exit 1
+      fi
+      echo "Android project found."
+  - name: Set up Gradle
+    uses: gradle/actions/setup-gradle@v4
+    with:
+      gradle-version: '8.9'
+  - name: Build APK
+    run: gradle assembleDebug --no-daemon
+  - name: Find APK
+    shell: bash
+    run: |
+      echo "APK files:"
+      find . -type f -name "*.apk" \
+        -not -path "./.git/*" -print
+  - name: Upload APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: A5CCTV-debug-apk
+      path: app/build/outputs/apk/debug/*.apk
+      if-no-files-found: error
