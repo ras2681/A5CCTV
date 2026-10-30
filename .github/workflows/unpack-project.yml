@@ -9,72 +9,52 @@ contents: write
 jobs:
 unpack:
 runs-on: ubuntu-latest
-
 steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      ref: main
-  - name: Check ZIP archive
-    shell: bash
+- name: Checkout repository
+uses: actions/checkout@v4
+with:
+ref: main
+
+  - name: Check archive
     run: |
-      set -euo pipefail
+      set -eu
       if [ ! -f "A5CCTV_GitHub_Ready.zip" ]; then
-        echo "::error::A5CCTV_GitHub_Ready.zip was not found in the repository root."
-        echo "Repository files:"
+        echo "ERROR: ZIP archive not found in repository root"
         ls -la
         exit 1
       fi
-      echo "Archive found."
-  - name: Extract Android project
-    shell: bash
+  - name: Extract project
     run: |
-      set -euo pipefail
+      set -eu
       TEMP_DIR="$(mktemp -d)"
-      unzip -q "A5CCTV_GitHub_Ready.zip" -d "$TEMP_DIR"
-      echo "Searching for the Gradle project..."
+      unzip -q A5CCTV_GitHub_Ready.zip -d "$TEMP_DIR"
       SETTINGS_FILE="$(find "$TEMP_DIR" -type f \( -name settings.gradle.kts -o -name settings.gradle \) -print -quit)"
       if [ -z "$SETTINGS_FILE" ]; then
-        echo "::error::No settings.gradle.kts or settings.gradle found in the ZIP archive."
-        echo "Archive contents:"
+        echo "ERROR: Gradle settings file not found in ZIP"
         find "$TEMP_DIR" -maxdepth 5 -type f | sort | head -200
         exit 1
       fi
       PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
       if [ ! -d "$PROJECT_DIR/app" ]; then
-        echo "::error::The Android app module folder was not found beside the Gradle settings file."
-        echo "Detected project directory: $PROJECT_DIR"
-        find "$TEMP_DIR" -maxdepth 5 -type d | sort
+        echo "ERROR: Android app folder not found"
         exit 1
       fi
-      echo "Android project found: $PROJECT_DIR"
-      # Copy project files to the repository root.
-      # Keep GitHub workflow files and the original ZIP archive.
       rsync -a \
         --exclude='.git/' \
         --exclude='.github/' \
-        --exclude='A5CCTV_GitHub_Ready.zip' \
-        "$PROJECT_DIR/" "./"
-      echo "Project files copied to the repository root."
-      echo "Root directory:"
+        "$PROJECT_DIR/" ./
+      test -d app
+      test -f settings.gradle.kts || test -f settings.gradle
+      echo "Project successfully extracted."
       ls -la
-      if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
-        echo "::error::Gradle settings file is missing from the repository root after extraction."
-        exit 1
-      fi
-      if [ ! -d "app" ]; then
-        echo "::error::The app folder is missing from the repository root after extraction."
-        exit 1
-      fi
-  - name: Commit extracted project
-    shell: bash
+  - name: Commit extracted files
     run: |
-      set -euo pipefail
+      set -eu
       git config user.name "github-actions[bot]"
       git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       git add -A
       if git diff --cached --quiet; then
-        echo "No changes to commit. The project may already be extracted."
+        echo "No new files to commit."
         exit 0
       fi
       git commit -m "Extract A5 CCTV Android project"
