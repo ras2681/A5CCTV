@@ -19,34 +19,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Extract Android project
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p project
-
-          unzip -q A5CCTV_GitHub_Ready.zip -d project
-
-          if [ -f "project/settings.gradle.kts" ] || [ -f "project/settings.gradle" ]; then
-            echo "Project found in archive root"
-          else
-            PROJECT_DIR=$(find project -mindepth 1 -maxdepth 1 -type d | head -n 1)
-
-            if [ -n "$PROJECT_DIR" ] && [ -f "$PROJECT_DIR/settings.gradle.kts" ]; then
-              echo "Project found in: $PROJECT_DIR"
-              cp -R "$PROJECT_DIR"/. project/
-            elif [ -n "$PROJECT_DIR" ] && [ -f "$PROJECT_DIR/settings.gradle" ]; then
-              echo "Project found in: $PROJECT_DIR"
-              cp -R "$PROJECT_DIR"/. project/
-            else
-              echo "ERROR: Gradle project was not found in ZIP"
-              find project -maxdepth 3 -type f | sort
-              exit 1
-            fi
-          fi
-
       - name: Fix JVM target compatibility
         shell: bash
         working-directory: project
