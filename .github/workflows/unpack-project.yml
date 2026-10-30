@@ -16,38 +16,37 @@ with:
 ref: main
 
   - name: Check archive
+    shell: bash
     run: |
       set -eu
       if [ ! -f "A5CCTV_GitHub_Ready.zip" ]; then
-        echo "ERROR: ZIP archive not found in repository root"
+        echo "ERROR: ZIP archive not found"
         ls -la
         exit 1
       fi
   - name: Extract project
+    shell: bash
     run: |
       set -eu
       TEMP_DIR="$(mktemp -d)"
       unzip -q A5CCTV_GitHub_Ready.zip -d "$TEMP_DIR"
       SETTINGS_FILE="$(find "$TEMP_DIR" -type f \( -name settings.gradle.kts -o -name settings.gradle \) -print -quit)"
       if [ -z "$SETTINGS_FILE" ]; then
-        echo "ERROR: Gradle settings file not found in ZIP"
+        echo "ERROR: Gradle settings file not found"
         find "$TEMP_DIR" -maxdepth 5 -type f | sort | head -200
         exit 1
       fi
       PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
       if [ ! -d "$PROJECT_DIR/app" ]; then
-        echo "ERROR: Android app folder not found"
+        echo "ERROR: app folder not found"
         exit 1
       fi
-      rsync -a \
-        --exclude='.git/' \
-        --exclude='.github/' \
-        "$PROJECT_DIR/" ./
+      rsync -a --exclude='.git/' --exclude='.github/' "$PROJECT_DIR/" ./
       test -d app
       test -f settings.gradle.kts || test -f settings.gradle
       echo "Project successfully extracted."
-      ls -la
   - name: Commit extracted files
+    shell: bash
     run: |
       set -eu
       git config user.name "github-actions[bot]"
